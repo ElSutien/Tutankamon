@@ -1634,12 +1634,12 @@ askOption() {
 #       - 1: name of the variable to store the result array
 # Returns byRef: a bash array with the keys (format: "name:email")
 get_keys() {
-  local uidv
+  local uidV
   local aux
   local cnt
   eval "$1=()"
-  readarray -t uidv <<<"$(gpg --list-keys | grep -E "^uid")"
-  for x in "${uidv[@]}"; do
+  readarray -t uidV <<<"$(gpg --list-keys | grep -E "^uid")"
+  for x in "${uidV[@]}"; do
     aux="$(echo "$x" | sed 's/  */ /g' | sed 's/] /\n/g' | tail -n1 | sed 's/ </:/g' | sed 's/>//g')"
     eval "$1+=(\"\$aux\")"
   done
@@ -1655,13 +1655,14 @@ choose_recipients() {
   local aux
   local sel=""
   local rec
+  local keysA
   
-  get_keys keysa
+  get_keys keysA
   
   echo "Select/unselect by choosing the index number of the recipient."
   echo "Available public keys:"
   cnt=1
-  for x in "${keysa[@]}"; do
+  for x in "${keysA[@]}"; do
     echo "  $cnt. $(echo "$x" | sed 's/:/ -- /')"
     cnt=$((cnt+1))
   done
@@ -1681,7 +1682,7 @@ choose_recipients() {
     
     if [ $aux -ge 1 ] && [ $aux -lt $cnt ]; then  #Check if selection is in range
       aux=$((aux-1))
-      rec=$(echo "${keysa[$aux]}" | sed 's/:/\n/' | tail -n1)
+      rec=$(echo "${keysA[$aux]}" | sed 's/:/\n/' | tail -n1)
       echo "$sel" | grep -q "$rec"
       if [ $? -eq 0 ]; then  #If recipient is already selected
         sel="${sel//"$rec "/}"
