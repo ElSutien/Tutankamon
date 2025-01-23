@@ -1628,12 +1628,19 @@ askOption() {
     fi
 }
 
+# FUNCTION echo an Array as String (elements sepparated by newlines)
+# Parameters:
+#       - 1: name of the variable Array to echo as String
+array2str () {
+  ( eval "IFS=\$'\\n'; printf \"%s\\n\" \"\${${1}[*]}\"" )
+}
 
-# FUNCTION retrieve stored GPG keys on the system
+
+# FUNCTION retrieve stored GPG public keys on the system
 # Parameters:
 #       - 1: name of the variable to store the result array
 # Returns byRef: a bash array with the keys (format: "name:email")
-get_keys() {
+get_pub_keys() {
   local uidV
   local aux
   local cnt
@@ -1657,7 +1664,7 @@ choose_recipients() {
   local rec
   local keysA
   
-  get_keys keysA
+  get_pub_keys keysA
   
   echo "Select/unselect by choosing the index number of the recipient."
   echo "Available public keys:"
@@ -1771,6 +1778,63 @@ encrypt() {
 }
 
 
+# FUNCTION Management of certificates
+certificates () {
+  local sel
+  local keysA
+  
+  local flag=1
+  while [ $flag -eq 1 ]; do
+    certificatesMenu sel
+    
+    case $sel in
+      0)
+        return 0
+        ;;
+      1)
+        echo "Certificates:"
+        get_pub_keys keysA
+        array2str keysA | sed 's/:/ -- /g'
+        ;;
+      2)
+        echo "Own Public Key:"
+        #privK=$(gpg --list-secret-keys | grep -E "^uid" | head -n1 | sed 's/</\n/' | tail -n1 | sed 's/>//')
+        gpg --armor --export $(gpg --list-secret-keys | grep -B1 "^uid" | head -n1 | sed 's/[ ][ ]*//g')
+        ;;
+    esac
+    echo
+  done
+}
+
+
+# FUNCTION Shows the certificates menu and perform actions
+# Parameters:
+#       - 1: name of the variable to store the selected option
+# Returns byRef: an integer with the selected option number
+certificatesMenu () {
+  local flag=0
+  local aux
+  echo "+----------------------------+"
+  echo "|······   TUTANKAMON   ······|"
+  echo "|······  CERTIFICATES  ······|"
+  echo "+----------------------------+"
+  echo "  1. Show stored certificates"
+  echo "  2. Print own public key"
+  echo "  0. Back"
+  echo ""
+  echo -n "Option: "
+  
+  while [ $flag -eq 0 ]; do
+    read -s -N 1 aux
+    echo "$aux" | grep -E -q '^[0-9]+$' || continue
+    [ $aux -ge 0 ] && [ $aux -le 2 ] && flag=1
+  done
+  
+  echo $aux
+  eval "$1=\$aux"
+}
+
+
 # FUNCTION Shows the help message
 show_help () {
   echo "$NAME. Version $VERSION - By ElSutien"
@@ -1799,6 +1863,7 @@ mainMenu () {
   echo "+----------------------------+"
   echo "  1. Decrypt message"
   echo "  2. Encrypt message"
+  echo "  3. Manage certificates"
   echo "  0. Exit"
   echo ""
   echo -n "Option: "
@@ -1806,7 +1871,7 @@ mainMenu () {
   while [ $flag -eq 0 ]; do
     read -s -N 1 aux
     echo "$aux" | grep -E -q '^[0-9]+$' || continue
-    [ $aux -ge 0 ] && [ $aux -le 2 ] && flag=1
+    [ $aux -ge 0 ] && [ $aux -le 3 ] && flag=1
   done
   
   echo $aux
@@ -1850,13 +1915,14 @@ while /bin/true; do
     0)
       exit 0
       ;;
-    
     1)
       decrypt
       ;;
-  
     2)
       encrypt
+      ;;
+    3)
+      certificates
       ;;
   esac
 done
