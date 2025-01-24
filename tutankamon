@@ -1,8 +1,8 @@
 #!/bin/bash
 
 NAME="Tutankamon"
-VERSION="0.4"
-RELEASE_DATE="20/01/2025"
+VERSION="0.5"
+RELEASE_DATE="24/01/2025"
 
 
 #####################################################################################################################
@@ -1585,54 +1585,6 @@ pause() {
 # Parameters:
 #       - 1: str of the question to ask the user
 #       - 2: name of the variable to store the result
-#       - 3: char of the default value ('y' or 'n')
-# Returns byRef: an integer: 1 for yes (y); 0 for no (n)
-askOption() {
-    local opts
-    local flag=0
-    local inp
-    
-    case $3 in
-      y)
-        opts="[Y/n]"
-        ;;
-      n)
-        opts="[y/N]"
-        ;;
-      *)
-        opts="[y/n]"
-        ;;
-    esac
-    
-    while [ $flag -eq 0 ]; do
-      echo -n "${1} ${opts} "
-      read inp
-      inp=$(echo "$inp" | cut -c1 | awk '{print tolower($0)}')
-      case $inp in
-        "y"|"n")
-          flag=1
-          ;;
-        *)
-          if [ -n "$3" ]; then
-            flag=1
-            inp=$(echo "$3" | awk '{print tolower($0)}')
-          fi
-          ;;
-      esac
-    done
-    
-    if [ "$inp" == "y" ]; then
-      eval $2=1
-    else
-      eval $2=0
-    fi
-}
-
-
-# FUNCTION for ask an option of Yes or No
-# Parameters:
-#       - 1: str of the question to ask the user
-#       - 2: name of the variable to store the result
 #       - 3: char of the default value ('y' or 'n') [optional]
 # Returns byRef: an integer: 1 for yes (y); 0 for no (n)
 askYesNo() {
@@ -2027,7 +1979,7 @@ encrypt() {
     echo " - $x"
     recraw="${recraw}-r $x "
   done
-  askOption "Continue?" aux y
+  askYesNo "Continue?" aux y
   
   if [ $aux -eq 1 ]; then
     echo "$rawtext" | gpg --encrypt --sign --armor --trust-model always $recraw
