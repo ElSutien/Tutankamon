@@ -1628,6 +1628,271 @@ askOption() {
     fi
 }
 
+
+# FUNCTION for ask an option of Yes or No
+# Parameters:
+#       - 1: str of the question to ask the user
+#       - 2: name of the variable to store the result
+#       - 3: char of the default value ('y' or 'n') [optional]
+# Returns byRef: an integer: 1 for yes (y); 0 for no (n)
+askYesNo() {
+    local opts
+    local flag=0
+    local inp
+    local nl=$'\n'
+    
+    case $3 in
+      y)
+        opts="[Y/n]"
+        ;;
+      n)
+        opts="[y/N]"
+        ;;
+      *)
+        opts="[y/n]"
+        ;;
+    esac
+    
+    echo -n "${1} ${opts} "
+    while [ $flag -eq 0 ]; do
+      read -s -N 1 inp
+      case "$inp" in
+        [yY]|[nN])
+          inp=$(echo "$inp" | awk '{print tolower($0)}')
+          flag=1
+          ;;
+        $'\n')
+          if [ -n "$3" ]; then
+            flag=1
+            inp=$(echo "$3" | awk '{print tolower($0)}')
+          fi
+          ;;
+      esac
+    done
+    echo -n "$inp"
+    
+    if [ "$inp" == "y" ]; then
+      eval $2=1
+    else
+      eval $2=0
+    fi
+}
+
+
+# FUNCTION invoke an option selection menu
+# Parameters:
+#       - 1: name of the variable Array of options available
+#       - 2: name of the variable to store the result
+#       - 3: string of the message to display for selection
+#       - 4: integer of the default selected option (index from 0) [default 0]
+# Returns: 0 if successfull; 123 for abort.
+# Returns byRef: an integer index of the array for the selected option.
+selectionMenu () {
+  local _locA
+  local _len
+  local _def
+  [ -n "${4}" ] && _def=${4} || _def=0
+  local _min _max _sel
+  local _er _ec
+  local _cr _cc
+  local _key
+  
+  copyArray $1 _locA
+  _len=${#_locA[@]}
+  _min=0
+  _max=$((_len-1))
+  _sel=$_def
+  
+  if [ -z "$3" ] || [ "$3" == "-" ]; then
+    :
+  else
+    echo "$3"
+  fi
+  for x in "${_locA[@]}"; do
+    echo "  ${x}"
+  done
+  
+  #Read initial cursor pos
+  read _cr _cc <<< "$(cursorPos)"
+  _er=$_cr
+  _ec=$_cc
+  
+  #Start selection mode
+  tput civis  #Set cursor invisible
+  stty -echo  #Do not print keystrokes
+  trap '_flag=2' SIGINT SIGTERM SIGKILL  #Invoke exit action on interrupt signal
+  
+  #Move cursor pointer to first column
+  _cc=0
+  
+  local _flag=1
+  while [ $_flag -eq 1 ]; do
+    #Move cursor to selected line
+    _cr=$((_er-_len+_sel))
+    tput cup $_cr $_cc
+  
+    #Mark selected line
+    tput smso
+    echo -n "  ${_locA[$_sel]}  "
+    tput rmso
+  
+    _key=$(awaitUserMovement)
+    
+    #Unmark previous selected line
+    tput cup $_cr $_cc
+    echo -n "  ${_locA[$_sel]}  "
+    
+    case "${_key}" in
+      Up)
+        if [ $_sel -gt $_min ]; then
+          _sel=$((_sel-1))
+        fi
+        ;;
+      Down)
+        if [ $_sel -lt $_max ]; then
+          _sel=$((_sel+1))
+        fi
+        ;;
+      Left)
+        _sel=$_min
+        ;;
+      Right)
+        _sel=$_max
+        ;;
+      Enter)
+        _flag=0
+        ;;
+      Escape)
+        tput cup $_er $_ec
+        tput cnorm  #Set cursor to normal visibility
+        stty echo  #Print keystrokes
+        local _aux
+        askYesNo "Do you want to cancel?" _aux y
+        
+        if [ $_aux -eq 0 ]; then #If No
+          echo -en "\r\033[0K"  #Erase Line
+        else
+          echo
+          _er=$((_er+1))
+          _flag=2
+        fi
+        
+        tput civis  #Set cursor invisible
+        stty -echo  #Do not print keystrokes
+        ;;
+    esac
+    
+    if [ $_flag -eq 0 ]; then
+      #Mark selected option
+      tput cup $_cr $_cc
+      tput smso
+      echo -n "  ${_locA[$_sel]}  "
+      tput rmso
+    fi
+    
+  done
+  
+  
+  #End selection mode (restoring everithing)
+  tput rmso  #Set color to normal
+  tput cup $_er $_ec  #Set cursor to end
+  tput cnorm  #Set cursor to normal visibility
+  stty echo  #Print keystrokes
+  trap - SIGINT SIGTERM SIGKILL  #Restore normal signal trap
+  
+  if [ $_flag -eq 2 ]; then
+    echo "Aborted selection."
+    return 123
+  fi
+  
+  #Store selection
+  eval "${2}=${_sel}"
+  return 0
+}
+
+
+# FUNCTION await for user to press arrow keys, Enter or Esc
+# Echo: a string with the name of the key pressed or empty if no valid
+# Returns: 0 if successfull; other for an error.
+awaitUserMovement() {
+	local input_key=''
+  local char
+  local isEsc=0
+  
+	POSIXLY_CORRECT=1 read -r -s -N 1 char || return 1 # Exit when Ctrl+C.
+  
+  # Special cases for certain control characters.
+	case "${char}" in
+		$'\e')
+			# If is an escaped key
+			isEsc=1
+			;;
+		$'\n')
+			input_key='Enter'
+			;;
+    #Ignore the rest of keys
+	esac
+  
+  if [ $isEsc -eq 1 ]; then
+    if read -r -s -N 1 -t 0.001 char; then
+      [ "${char}" == '[' ] || return 2
+      isEsc=1 #Escaped sequence continues
+    else
+      input_key='Escape' # Just pressed the Escape key.
+      isEsc=0 #No more escaped sequence
+    fi
+  fi
+  
+  # Read the escaped key
+  if [ $isEsc -eq 1 ]; then
+    local char
+    read -r -s -N 1 -t 0.001 char || return 3
+
+    # Cursor movement keys.
+    case "${char}" in
+      A)
+        input_key='Up'
+        ;;
+      B)
+        input_key='Down'
+        ;;
+      C)
+        input_key='Right'
+        ;;
+      D)
+        input_key='Left'
+        ;;
+    esac
+  fi
+  
+  echo "${input_key}"  #Print the input key
+  return 0
+}
+
+
+# FUNCTION fetch the current cursor position on screen
+# Echo: two integers of row (line) and column starting from 0
+cursorPos() {
+  local pos
+  IFS='[;' read -rs -p $'\e[6n' -d R -a pos || echo "ERROR fetching cursor pos. Code: $? ; ${pos[*]}"
+  echo "$((pos[1]-1)) $((pos[2]-1))"
+}
+
+
+# FUNCTION copy an array from a variable to another
+# Parameters:
+#       - 1: name of the variable Array to copy
+#       - 2: name of the variable Array to write
+# Returns byRef: an Array variable
+copyArray () {
+  eval "${2}=()"  #Init Array
+  
+  for i in $(eval "echo \${!${1}[@]}"); do
+    eval "${2}+=(\"$(eval "echo \"\${${1}[$i]}\"")\")"
+  done
+}
+
+
 # FUNCTION echo an Array as String (elements sepparated by newlines)
 # Parameters:
 #       - 1: name of the variable Array to echo as String
@@ -1780,58 +2045,41 @@ encrypt() {
 
 # FUNCTION Management of certificates
 certificates () {
-  local sel
+  local sel=0
   local keysA
   
   local flag=1
   while [ $flag -eq 1 ]; do
-    certificatesMenu sel
+    echo "+----------------------------+"
+    echo "|······   TUTANKAMON   ······|"
+    echo "|······  CERTIFICATES  ······|"
+    echo "+----------------------------+"
+    echo
+    opts=()
+    opts+=(" Show stored certificates") #0
+    opts+=(" Print own public key    ") #1
+    opts+=(" BACK                    ") #2
+    
+    selectionMenu opts sel - $sel || sel=2
+    echo
     
     case $sel in
       0)
-        return 0
-        ;;
-      1)
         echo "Certificates:"
         get_pub_keys keysA
         array2str keysA | sed 's/:/ -- /g'
         ;;
-      2)
+      1)
         echo "Own Public Key:"
         #privK=$(gpg --list-secret-keys | grep -E "^uid" | head -n1 | sed 's/</\n/' | tail -n1 | sed 's/>//')
         gpg --armor --export $(gpg --list-secret-keys | grep -B1 "^uid" | head -n1 | sed 's/[ ][ ]*//g')
         ;;
+      2)
+        return 0
+        ;;
     esac
     echo
   done
-}
-
-
-# FUNCTION Shows the certificates menu and perform actions
-# Parameters:
-#       - 1: name of the variable to store the selected option
-# Returns byRef: an integer with the selected option number
-certificatesMenu () {
-  local flag=0
-  local aux
-  echo "+----------------------------+"
-  echo "|······   TUTANKAMON   ······|"
-  echo "|······  CERTIFICATES  ······|"
-  echo "+----------------------------+"
-  echo "  1. Show stored certificates"
-  echo "  2. Print own public key"
-  echo "  0. Back"
-  echo ""
-  echo -n "Option: "
-  
-  while [ $flag -eq 0 ]; do
-    read -s -N 1 aux
-    echo "$aux" | grep -E -q '^[0-9]+$' || continue
-    [ $aux -ge 0 ] && [ $aux -le 2 ] && flag=1
-  done
-  
-  echo $aux
-  eval "$1=\$aux"
 }
 
 
@@ -1850,42 +2098,13 @@ show_help () {
 }
 
 
-# FUNCTION Shows the main menu to select the option
-# Parameters:
-#       - 1: name of the variable to store the selected option
-# Returns byRef: an integer with the selected option number
-mainMenu () {
-  local flag=0
-  local aux
-  echo "+----------------------------+"
-  echo "|·······  TUTANKAMON  ·······|"
-  echo "|·······  MAIN  MENU  ·······|"
-  echo "+----------------------------+"
-  echo "  1. Decrypt message"
-  echo "  2. Encrypt message"
-  echo "  3. Manage certificates"
-  echo "  0. Exit"
-  echo ""
-  echo -n "Option: "
-  
-  while [ $flag -eq 0 ]; do
-    read -s -N 1 aux
-    echo "$aux" | grep -E -q '^[0-9]+$' || continue
-    [ $aux -ge 0 ] && [ $aux -le 3 ] && flag=1
-  done
-  
-  echo $aux
-  eval "$1=\$aux"
-}
-
-
 
 
 
 
 ########################
 ######    MAIN    ######
-
+sel=0
 
 # Process parameters
 while [ $# -gt 0 ]; do
@@ -1909,20 +2128,33 @@ done
 
 
 while /bin/true; do
-  mainMenu sel
+  #mainMenu sel
+  echo "+----------------------------+"
+  echo "|·······  TUTANKAMON  ·······|"
+  echo "|·······  MAIN  MENU  ·······|"
+  echo "+----------------------------+"
+  echo
+  opts=()
+  opts+=(" Decrypt Message    ") #0
+  opts+=(" Encrypt Message    ") #1
+  opts+=(" Manage Certificates") #2
+  opts+=(" EXIT               ") #3
+
+  selectionMenu opts sel - $sel || exit $?
+  echo
 
   case $sel in
     0)
-      exit 0
-      ;;
-    1)
       decrypt
       ;;
-    2)
+    1)
       encrypt
       ;;
-    3)
+    2)
       certificates
+      ;;
+    3)
+      exit 0
       ;;
   esac
 done
