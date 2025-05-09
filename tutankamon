@@ -1632,6 +1632,17 @@ askYesNo() {
 }
 
 
+# FUNCTION for ask for an input value
+# Parameters:
+#       - 1: str of the question to ask the user
+#       - 2: name of the variable to store the result
+#       - 3: str of the default value [optional]
+# Returns byRef: a string with the value
+askValue() {
+  read -er -p "${1}: " -i "${3}" ${2}
+}
+
+
 # FUNCTION invoke an option selection menu
 # Parameters:
 #       - 1: name of the variable Array of options available
@@ -2085,7 +2096,8 @@ manage_certificates () {
   local opts
   local flag
   local aux
-  local sel
+  local sel1=0
+  local sel2
   local keysA
   
   flag=1
@@ -2098,20 +2110,20 @@ manage_certificates () {
     done
     
     normalizeArray opts
-    selectionMenu opts sel "Certificate list:" 0 false true || return 1  #Select certificate
+    selectionMenu opts sel1 "Certificate list:" $sel1 false true || return 1  #Select certificate
     
 	
-	echo "Selected: ${opts[$sel]}"
-	aux="$(echo "${keysA[$sel]}" | sed 's/:/\n/' | tail -n1)"
+	echo "Selected: ${opts[$sel1]}"
+	aux="$(echo "${keysA[$sel1]}" | sed 's/:/\n/' | tail -n1)"
 	
     opts=(" View certificate")    #0
 	opts+=(" Print certificate")  #1
 	opts+=(" Delete certificate") #2
 	
 	normalizeArray opts
-    selectionMenu opts sel - 0 false true || continue  #Certificate opperation
+    selectionMenu opts sel2 - 0 false true || continue  #Certificate opperation
 	
-	case $sel in
+	case $sel2 in
 	  0)
 	    gpg --list-keys --keyid-format=long "$aux"
 	    ;;
@@ -2119,12 +2131,13 @@ manage_certificates () {
 	    gpg --armor --export "$aux"
 	    ;;
 	  2)
-	    askYesNo "Really want to delete '$aux' certificate?" sel n
-		if [ $sel -eq 1 ]; then
+	    askYesNo "Really want to delete '$aux' certificate?" sel2 n
+		if [ $sel2 -eq 1 ]; then
 		  gpg --delete-keys "$aux"
 		fi
 		;;
 	esac
+	echo
   done
 }
 
@@ -2160,7 +2173,15 @@ certificates () {
         gpg --armor --export $(gpg --list-secret-keys | grep -B1 "^uid" | head -n1 | sed 's/[ ][ ]*//g')
         ;;
 	  2)
-	    echo TODO
+	    local res
+	    askValue "Path of the certificate" res
+		if [ -z "$res" ]; then
+		  echo "Aborting..."
+		elif [ -f "$res" ]; then
+		  cat "$res" | gpg --armor --import
+		else
+		  echo "File do not exist."
+		fi
 		;;
       3)
         return 0
