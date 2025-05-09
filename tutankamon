@@ -1977,50 +1977,33 @@ get_pub_keys() {
 #       - 1: name of the variable to store the result array
 # Returns byRef: a bash array with the recipients emails
 choose_recipients() {
+  local opts
   local cnt
   local aux
-  local sel=""
+  local sel
   local rec
   local keysA
   
-  get_pub_keys keysA
+  eval "$1=()"  #Init output vector
   
-  echo "Select/unselect by choosing the index number of the recipient."
-  echo "Available public keys:"
-  cnt=1
+  get_pub_keys keysA  #Get array of available keys
+  
+  opts=()
   for x in "${keysA[@]}"; do
-    echo "  $cnt. $(echo "$x" | sed 's/:/ -- /')"
-    cnt=$((cnt+1))
+    opts+=(" $(echo "$x" | sed 's/:/ -- /')")
   done
-  echo
-  echo "  Enter to continue"
-  echo
   
-  echo -n "Selection: "
-  local flag=0
-  while [ $flag -eq 0 ]; do
-    #echo -ne "\033[1A\033[0K\033[1A\033[0K"  #Remove previous line
-    echo -ne "\r\033[0K"  #Remove selection line
-    echo -n "Selection: $sel" #Reprint selection line
-    read -s -N 1 aux
-    [ "$aux" == $'\n' ] && flag=1 && continue  #If enter is pressed: exit the loop
-    echo "$aux" | grep -E -q '^[0-9]+$' || continue  #If no correct input, continue
-    
-    if [ $aux -ge 1 ] && [ $aux -lt $cnt ]; then  #Check if selection is in range
-      aux=$((aux-1))
-      rec=$(echo "${keysA[$aux]}" | sed 's/:/\n/' | tail -n1)
-      echo "$sel" | grep -q "$rec"
-      if [ $? -eq 0 ]; then  #If recipient is already selected
-        sel="${sel//"$rec "/}"
-      else
-        sel="${sel}${rec} "
-      fi
-    fi
+  normalizeArray opts
+  selectionMenu opts sel "Use spacebar to select/unselect" 0 true true || return 1
+  
+  #Get email of selected options
+  aux=()
+  for i in $sel; do
+    aux+=("$(echo "${keysA[$i]}" | sed 's/:/\n/' | tail -n1)")
   done
-  echo
   
-  eval "$1=()"
-  for x in $sel; do
+  #Store selected recipients in output array
+  for x in "${aux[@]}"; do
     eval "$1+=(\"\$x\")"
   done
 }
