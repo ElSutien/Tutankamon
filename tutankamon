@@ -1636,19 +1636,26 @@ askYesNo() {
 # Parameters:
 #       - 1: name of the variable Array of options available
 #       - 2: name of the variable to store the result
-#       - 3: string of the message to display for selection
+#       - 3: string of the message to display for selection  [none with -]
 #       - 4: integer of the default selected option (index from 0) [default 0]
+#       - 5: boolean if this is a multi selection menu [default false]
+#       - 6: boolean if selection can be canceled [default false]
 # Returns: 0 if successfull; 123 for abort.
 # Returns byRef: an integer index of the array for the selected option.
+#                In case of multisel, a vector or integers.
 selectionMenu () {
   local _locA
   local _len
   local _def
-  [ -n "${4}" ] && _def=${4} || _def=0
+  [ -n "${4}" ] && [ "${4}" != "-" ] && _def=${4} || _def=0
+  local _isMulti
+  local _multiSel
+  local _isExitable
   local _min _max _sel
   local _er _ec
   local _cr _cc
   local _key
+  local i
   
   copyArray $1 _locA
   _len=${#_locA[@]}
@@ -1656,24 +1663,36 @@ selectionMenu () {
   _max=$((_len-1))
   _sel=$_def
   
-  if [ -z "$3" ] || [ "$3" == "-" ]; then
+  [ -n "${5}" ] && [ "${5}" == "true" ] && _isMulti=1 || _isMulti=0  #Set default for Multi param
+  initArray _multiSel $_len " "
+  
+  [ -n "${6}" ] && [ "${6}" == "true" ] && _isExitable=1 || _isExitable=0 #Set default for Exitable
+  
+  if [ -z "$3" ] || [ "$3" == "-" ]; then #Print message if available
     :
   else
     echo "$3"
   fi
-  for x in "${_locA[@]}"; do
-    echo "  ${x}"
+  
+  for i in "${!_locA[@]}"; do #Print all options
+    echo -e "${NC}${_multiSel[$i]} ${_locA[$i]}"
+    #printf "%s %s\n" "${_multiSel[$i]}" "${_locA[$i]}"
   done
+  echo
   
   #Read initial cursor pos
   read _cr _cc <<< "$(cursorPos)"
-  _er=$_cr
+  _er=$((_cr-1))
   _ec=$_cc
   
   #Start selection mode
   tput civis  #Set cursor invisible
   stty -echo  #Do not print keystrokes
-  trap '_flag=2' SIGINT SIGTERM SIGKILL  #Invoke exit action on interrupt signal
+  if [ $_isExitable -eq 1 ]; then
+    trap '_flag=2' SIGINT SIGTERM SIGKILL  #Invoke exit action on interrupt signal
+  else
+    trap '' SIGINT SIGTERM SIGKILL  #Disable exit action on interrupt signal
+  fi
   
   #Move cursor pointer to first column
   _cc=0
@@ -1685,15 +1704,18 @@ selectionMenu () {
     tput cup $_cr $_cc
   
     #Mark selected line
+    echo -en "${NC}"  #Disable any color
     tput smso
-    echo -n "  ${_locA[$_sel]}  "
+    echo -en "${_multiSel[$_sel]} ${_locA[$_sel]}  "
+    #printf "%s %s  " "${_multiSel[$_sel]}" "${_locA[$_sel]}"
     tput rmso
   
     _key=$(awaitUserMovement)
     
     #Unmark previous selected line
     tput cup $_cr $_cc
-    echo -n "  ${_locA[$_sel]}  "
+    echo -en "${NC}${_multiSel[$_sel]} ${_locA[$_sel]}  "
+    #printf "%s %s  " "${_multiSel[$_sel]}" "${_locA[$_sel]}"
     
     case "${_key}" in
       Up)
@@ -1715,34 +1737,47 @@ selectionMenu () {
       Enter)
         _flag=0
         ;;
-      Escape)
-        tput cup $_er $_ec
-        tput cnorm  #Set cursor to normal visibility
-        stty echo  #Print keystrokes
-        local _aux
-        askYesNo "Do you want to cancel?" _aux y
-        
-        if [ $_aux -eq 0 ]; then #If No
-          echo -en "\r\033[0K"  #Erase Line
-        else
-          echo
-          _er=$((_er+1))
-          _flag=2
+      Space)
+        if [ $_isMulti -eq 1 ]; then
+          [ "${_multiSel[$_sel]}" == "*" ] && _multiSel[$_sel]=" " || _multiSel[$_sel]="*"
         fi
-        
-        tput civis  #Set cursor invisible
-        stty -echo  #Do not print keystrokes
+        ;;
+      Escape)
+        if [ $_isExitable -eq 1 ]; then
+          tput cup $_er $_ec  #Move cursor to end
+          tput cnorm  #Set cursor to normal visibility
+          stty echo  #Print keystrokes
+          echo -en "${NC}"  #Disable any color
+          local _aux
+          askYesNo "Do you want to cancel?" _aux y
+          
+          if [ $_aux -eq 0 ]; then #If No
+            tput cup $_er $_ec  #Move cursor to end (prompt line)
+            echo -en "\r\033[0K"  #Erase Line (terminal commands)
+            #echo -en "\r                            "  #Erase Line (primitive)
+          else
+            echo
+            _er=$((_er+1))
+            _flag=2
+          fi
+          
+          tput civis  #Set cursor invisible
+          stty -echo  #Do not print keystrokes
+        fi
         ;;
     esac
     
-    if [ $_flag -eq 0 ]; then
+    if [ $_flag -eq 0 ] && [ $_isMulti -eq 0 ] ; then
       #Mark selected option
       tput cup $_cr $_cc
+      echo -en "${NC}"  #Disable any color
       tput smso
-      echo -n "  ${_locA[$_sel]}  "
+      echo -en "${_multiSel[$_sel]} ${_locA[$_sel]}  "
+      #printf "%s %s  " "${_multiSel[$_sel]}" "${_locA[$_sel]}"
       tput rmso
     fi
     
+    echo -en "${NC}"  #Disable any color
   done
   
   
@@ -1759,32 +1794,48 @@ selectionMenu () {
   fi
   
   #Store selection
-  eval "${2}=${_sel}"
+  if [ $_isMulti -eq 1 ]; then
+    eval "${2}=\"\""
+    for i in ${!_multiSel[@]}; do
+      [ "${_multiSel[$i]}" == "*" ] && eval "${2}+=\"${i} \""
+    done
+    eval "${2}=\"\${${2}% }\""  #Remove trailing space
+  else
+    eval "${2}=${_sel}"
+  fi
+  
+  echo
   return 0
 }
 
 
-# FUNCTION await for user to press arrow keys, Enter or Esc
+# FUNCTION await for user to press arrow keys, Spacebar, Enter or Esc
 # Echo: a string with the name of the key pressed or empty if no valid
 # Returns: 0 if successfull; other for an error.
 awaitUserMovement() {
-	local input_key=''
+  local input_key=''
   local char
   local isEsc=0
   
-	POSIXLY_CORRECT=1 read -r -s -N 1 char || return 1 # Exit when Ctrl+C.
+  POSIXLY_CORRECT=1 read -r -s -N 1 char || return 1 # Exit when Ctrl+C.
   
   # Special cases for certain control characters.
-	case "${char}" in
-		$'\e')
-			# If is an escaped key
-			isEsc=1
-			;;
-		$'\n')
-			input_key='Enter'
-			;;
-    #Ignore the rest of keys
-	esac
+  case "${char}" in
+    $'\e')
+      # If is an escaped key
+      isEsc=1
+      ;;
+    $'\n')
+      input_key='Enter'
+      ;;
+    $'\177')
+      input_key='Backspace'
+      ;;
+    ' ')
+      input_key='Space'
+      ;;
+      #Ignore the rest of keys
+  esac
   
   if [ $isEsc -eq 1 ]; then
     if read -r -s -N 1 -t 0.001 char; then
@@ -1842,6 +1893,56 @@ copyArray () {
   
   for i in $(eval "echo \${!${1}[@]}"); do
     eval "${2}+=(\"$(eval "echo \"\${${1}[$i]}\"")\")"
+  done
+}
+
+
+# FUNCTION normalize length all items in an array
+# Parameters:
+#     - 1: name of the variable Array
+# Returns byRef: the Array normalized
+normalizeArray () {
+  local maxl=0
+  local aux
+  local x y
+  for x in $(eval "echo \${!${1}[@]}"); do
+    aux=$(eval "echo \${#${1}[${x}]}")
+    [ $aux -gt $maxl ] && maxl=$aux
+  done
+  
+  for x in $(eval "echo \${!${1}[@]}"); do
+    aux=$(eval "echo \${#${1}[${x}]}")
+    for y in $(seq $((maxl-aux))); do
+      eval "${1}[${x}]+=\" \""
+    done
+  done
+}
+
+
+# FUNCTION convert a list into Array
+# Parameters:
+#     - 1: name of the variable with a List (items sep by \n)
+#     - 2: name of the variable to store Array
+# Returns byRef: the new Array
+list2Array () {
+  eval "${2}=()"
+  while read -r wline; do
+    eval "${2}+=(\"$wline\")"
+  done <<< "${!1}"
+}
+
+
+# FUNCTION Initialize Array with given size and default str
+# Parameters:
+#     - 1: name of the Array to be initialized
+#     - 2: uinteger of the size of the array
+#     - 3: str of the default content for each item
+# Returns byRef: the new Array initialized
+initArray () {
+  local i
+  eval "${1}=()"
+  for i in $(seq $2); do
+    eval "${1}+=(\"${3}\")"
   done
 }
 
@@ -2013,7 +2114,7 @@ certificates () {
     opts+=(" Print own public key    ") #1
     opts+=(" BACK                    ") #2
     
-    selectionMenu opts sel - $sel || sel=2
+    selectionMenu opts sel - $sel false true || sel=2
     echo
     
     case $sel in
@@ -2093,7 +2194,7 @@ while /bin/true; do
   opts+=(" Manage Certificates") #2
   opts+=(" EXIT               ") #3
 
-  selectionMenu opts sel - $sel || exit $?
+  selectionMenu opts sel - $sel false true || exit $?
   echo
 
   case $sel in
