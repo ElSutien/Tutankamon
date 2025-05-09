@@ -1628,6 +1628,7 @@ askYesNo() {
     else
       eval $2=0
     fi
+    echo
 }
 
 
