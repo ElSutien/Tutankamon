@@ -2080,7 +2080,56 @@ encrypt() {
 }
 
 
-# FUNCTION Management of certificates
+# FUNCTION Manage Certificates
+manage_certificates () {
+  local opts
+  local flag
+  local aux
+  local sel
+  local keysA
+  
+  flag=1
+  while [ $flag -eq 1 ]; do
+    get_pub_keys keysA  #Get array of available keys
+    
+    opts=()
+    for x in "${keysA[@]}"; do
+      opts+=(" $(echo "$x" | sed 's/:/ -- /')")
+    done
+    
+    normalizeArray opts
+    selectionMenu opts sel "Certificate list:" 0 false true || return 1  #Select certificate
+    
+	
+	echo "Selected: ${opts[$sel]}"
+	aux="$(echo "${keysA[$sel]}" | sed 's/:/\n/' | tail -n1)"
+	
+    opts=(" View certificate")    #0
+	opts+=(" Print certificate")  #1
+	opts+=(" Delete certificate") #2
+	
+	normalizeArray opts
+    selectionMenu opts sel - 0 false true || continue  #Certificate opperation
+	
+	case $sel in
+	  0)
+	    gpg --list-keys --keyid-format=long "$aux"
+	    ;;
+	  1)
+	    gpg --armor --export "$aux"
+	    ;;
+	  2)
+	    askYesNo "Really want to delete '$aux' certificate?" sel n
+		if [ $sel -eq 1 ]; then
+		  gpg --delete-keys "$aux"
+		fi
+		;;
+	esac
+  done
+}
+
+
+# FUNCTION Certificates operation
 certificates () {
   local sel=0
   local keysA
@@ -2093,25 +2142,27 @@ certificates () {
     echo "+----------------------------+"
     echo
     opts=()
-    opts+=(" Show stored certificates") #0
+    opts+=(" Manage Certificates     ") #0
     opts+=(" Print own public key    ") #1
-    opts+=(" BACK                    ") #2
+	opts+=(" Import new certificate  ") #2
+    opts+=(" BACK                    ") #3
     
-    selectionMenu opts sel - $sel false true || sel=2
+    selectionMenu opts sel - $sel false true || sel=3
     echo
     
     case $sel in
       0)
-        echo "Certificates:"
-        get_pub_keys keysA
-        array2str keysA | sed 's/:/ -- /g'
+        manage_certificates
         ;;
       1)
         echo "Own Public Key:"
         #privK=$(gpg --list-secret-keys | grep -E "^uid" | head -n1 | sed 's/</\n/' | tail -n1 | sed 's/>//')
         gpg --armor --export $(gpg --list-secret-keys | grep -B1 "^uid" | head -n1 | sed 's/[ ][ ]*//g')
         ;;
-      2)
+	  2)
+	    echo TODO
+		;;
+      3)
         return 0
         ;;
     esac
@@ -2172,10 +2223,10 @@ while /bin/true; do
   echo "+----------------------------+"
   echo
   opts=()
-  opts+=(" Decrypt Message    ") #0
-  opts+=(" Encrypt Message    ") #1
-  opts+=(" Manage Certificates") #2
-  opts+=(" EXIT               ") #3
+  opts+=(" Decrypt Message ") #0
+  opts+=(" Encrypt Message ") #1
+  opts+=(" Certificates    ") #2
+  opts+=(" EXIT            ") #3
 
   selectionMenu opts sel - $sel false true || exit $?
   echo
