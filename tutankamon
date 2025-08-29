@@ -2212,9 +2212,14 @@ show_help () {
   echo ""
   echo "Options:"
   echo "    -h    --help       Show this help."
+  echo "    -V    --version    Print version."
   echo ""
 }
 
+
+show_version () {
+  echo "$NAME $VERSION - By ElSutien"
+}
 
 
 
@@ -2229,6 +2234,11 @@ while [ $# -gt 0 ]; do
   case $1 in
     -h|--help)
       show_help
+      exit 0
+      ;;
+      
+    -V|--version)
+      show_version
       exit 0
       ;;
       
