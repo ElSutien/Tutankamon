@@ -1650,7 +1650,8 @@ askValue() {
 #       - 3: string of the message to display for selection  [none with -]
 #       - 4: integer of the default selected option (index from 0) [default 0]
 #       - 5: boolean if this is a multi selection menu [default false]
-#       - 6: boolean if selection can be canceled [default false]
+#       - 6: boolean if selection can be aborted [default false]
+#       - 7: boolean if ask user to confirm abortion [default true]
 # Returns: 0 if successfull; 123 for abort.
 # Returns byRef: an integer index of the array for the selected option.
 #                In case of multisel, a vector or integers.
@@ -1662,6 +1663,7 @@ selectionMenu () {
   local _isMulti
   local _multiSel
   local _isExitable
+  local _isAskOnExt
   local _min _max _sel
   local _er _ec
   local _cr _cc
@@ -1677,7 +1679,8 @@ selectionMenu () {
   [ -n "${5}" ] && [ "${5}" == "true" ] && _isMulti=1 || _isMulti=0  #Set default for Multi param
   initArray _multiSel $_len " "
   
-  [ -n "${6}" ] && [ "${6}" == "true" ] && _isExitable=1 || _isExitable=0 #Set default for Exitable
+  [ -n "${6}" ] && [ "${6}" == "true" ] && _isExitable=1 || _isExitable=0  #Set default for Exitable
+  [ -n "${7}" ] && [ "${7}" == "false" ] && _isAskOnExt=0 || _isAskOnExt=1 #Set default for Ask On Exit
   
   if [ -z "$3" ] || [ "$3" == "-" ]; then #Print message if available
     :
@@ -1755,25 +1758,31 @@ selectionMenu () {
         ;;
       Escape)
         if [ $_isExitable -eq 1 ]; then
-          tput cup $_er $_ec  #Move cursor to end
-          tput cnorm  #Set cursor to normal visibility
-          stty echo  #Print keystrokes
-          echo -en "${NC}"  #Disable any color
-          local _aux
-          askYesNo "Do you want to cancel?" _aux y
-          
-          if [ $_aux -eq 0 ]; then #If No
-            tput cup $_er $_ec  #Move cursor to end (prompt line)
-            echo -en "\r\033[0K"  #Erase Line (terminal commands)
-            #echo -en "\r                            "  #Erase Line (primitive)
+          if [ $_isAskOnExt -eq 1 ]; then
+            tput cup $_er $_ec  #Move cursor to end
+            tput cnorm  #Set cursor to normal visibility
+            stty echo  #Print keystrokes
+            echo -en "${NC}"  #Disable any color
+            local _aux
+            askYesNo "Do you want to cancel?" _aux y
+            
+            if [ $_aux -eq 0 ]; then #If No
+              tput cup $_er $_ec  #Move cursor to end (prompt line)
+              echo -en "\r\033[0K"  #Erase Line (terminal commands)
+              #echo -en "\r                            "  #Erase Line (primitive)
+            else
+              echo
+              _er=$((_er+1))
+              _flag=2
+            fi
+            
+            tput civis  #Set cursor invisible
+            stty -echo  #Do not print keystrokes
           else
             echo
             _er=$((_er+1))
             _flag=2
           fi
-          
-          tput civis  #Set cursor invisible
-          stty -echo  #Do not print keystrokes
         fi
         ;;
     esac
