@@ -1,7 +1,7 @@
 # Tutankamon
 TUI Bash application to encrypt and decrypt GPG messages on Linux.
 
-Is like Kleopatra on Windows but a lot simpler, easy to use and portable.
+It is like Kleopatra on Windows but a lot simpler, easier to use and portable.
 
 ## Features
 
@@ -15,8 +15,9 @@ Is like Kleopatra on Windows but a lot simpler, easy to use and portable.
   - Uses the integrated text editor to input the message.
   - Can select one or multiple recipients from stored public keys.
 - **Manage certificates**
-  - Show your stored public keys subjects.
+  - Manage your stored public keys subjects.
   - Print the public key of your private key.
+  - Import new certificates.
 
 ## Requirements
 
