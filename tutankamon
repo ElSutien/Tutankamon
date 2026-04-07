@@ -2791,7 +2791,7 @@ encrypt() {
   echo "Do you want to encrypt the message for:"
   for x in "${recipientsA[@]}"; do
     echo " - $x"
-    recraw="${recraw}-r $x "
+    recraw="${recraw:+$recraw }-r $x"
   done
   askYesNo "Continue?" aux y
   
@@ -2809,6 +2809,117 @@ encrypt() {
   echo
   #TODO ask for signing
 }
+
+
+# FUNCTION Encrypt file
+file_encrypt () {
+  local recipientsA
+  local aux
+  local recraw
+  
+  echo "Select the recipients of the message:"
+  choose_recipients recipientsA #Select recipients
+  
+  #check if vector is empty
+  if [ ${#recipientsA[@]} -eq 0 ]; then
+    echo "No recipients was selected. Aborting."
+    return 1
+  fi
+  
+  recraw=""
+  echo "Do you want to encrypt the message for:"
+  for x in "${recipientsA[@]}"; do
+    echo " - $x"
+    recraw="${recraw:+$recraw }-r $x"
+  done
+  askYesNo "Continue?" aux y
+  
+  if [ $aux -eq 1 ]; then
+    tput rmcup
+    gpg --encrypt --armor --trust-model always -o "$1.asc" $recraw "$1"
+    echo "File encrypted on: $1.asc"
+    pause
+    tput smcup
+  else
+    echo "Aborting."
+  fi
+}
+
+
+
+# FUNCTION Decrypt file
+file_decrypt () {
+  local fname
+  local aux
+  
+  #Check if file is encrypted
+  head -n1 "$1" | grep -q -- '-----BEGIN PGP MESSAGE-----'
+  if [ $? -ne 0 ]; then
+    echo "Selected file is not a PGP file"
+    pause
+    return 1
+  fi
+  
+  #Select output name
+  echo "$1" | grep -qE '.*\.asc' && fname="${1%.asc}" || fname="$1.out"
+  
+  echo "Output file: $fname"
+  [ -f "$fname" ] && echo "File already exist. Will be overwrote."
+  askYesNo "Continue?" aux y
+  
+  if [ $aux -eq 1 ]; then
+    tput rmcup
+    gpg --decrypt -o "$fname" "$1"
+    echo "File decrypted on: $fname"
+    pause
+    tput smcup
+  else
+    echo "Aborting."
+  fi
+}
+
+
+
+# FUNCTION Process files for encrypt/decrypt
+fileprocess () {
+  local sel=0
+  local fil
+  
+  
+  BashFileExplorer fil "Select file to process"
+  clear
+  if [ -z "$fil" ]; then
+    echo "Aborting..."
+    return
+  elif [ -f "$fil" ]; then
+    echo "File: $fil"
+  else
+    echo "File do not exist."
+    return
+  fi
+  
+  opts=()
+  opts+=(" Encrypt File") #0
+  opts+=(" Decrypt File") #1
+  opts+=(" BACK") #2
+  
+  normalizeArray opts
+  selectionMenu opts sel - $sel false true false || sel=2
+  
+  case $sel in
+    0)
+      file_encrypt "$fil"
+      ;;
+    1)
+      file_decrypt "$fil"
+      ;;
+    2)
+      return 0
+      ;;
+  esac
+  return 0
+}
+
 
 
 # FUNCTION Manage Certificates
@@ -2832,32 +2943,32 @@ manage_certificates () {
     normalizeArray opts
     selectionMenu opts sel1 "Certificate list:" $sel1 false true false || return 1  #Select certificate
     
-	
-	echo "Selected: ${opts[$sel1]}"
-	aux="$(echo "${keysA[$sel1]}" | sed 's/:/\n/' | tail -n1)"
-	
+    
+    echo "Selected: ${opts[$sel1]}"
+    aux="$(echo "${keysA[$sel1]}" | sed 's/:/\n/' | tail -n1)"
+    
     opts=(" View certificate")    #0
-	opts+=(" Print certificate")  #1
-	opts+=(" Delete certificate") #2
-	
-	normalizeArray opts
+    opts+=(" Print certificate")  #1
+    opts+=(" Delete certificate") #2
+    
+    normalizeArray opts
     selectionMenu opts sel2 - 0 false true false || continue  #Certificate opperation
-	
-	case $sel2 in
-	  0)
-	    gpg --list-keys --keyid-format=long "$aux"
-	    ;;
-	  1)
-	    gpg --armor --export "$aux"
-	    ;;
-	  2)
-	    askYesNo "Really want to delete '$aux' certificate?" sel2 n
-		if [ $sel2 -eq 1 ]; then
-		  gpg --delete-keys "$aux"
-		fi
-		;;
-	esac
-	echo
+    
+    case $sel2 in
+      0)
+        gpg --list-keys --keyid-format=long "$aux"
+        ;;
+      1)
+        gpg --armor --export "$aux"
+        ;;
+      2)
+        askYesNo "Really want to delete '$aux' certificate?" sel2 n
+        if [ $sel2 -eq 1 ]; then
+          gpg --delete-keys "$aux"
+        fi
+        ;;
+    esac
+    echo
   done
 }
 
@@ -2987,8 +3098,9 @@ while /bin/true; do
   opts=()
   opts+=(" Decrypt Message ") #0
   opts+=(" Encrypt Message ") #1
-  opts+=(" Certificates    ") #2
-  opts+=(" EXIT            ") #3
+  opts+=(" File processing ") #2
+  opts+=(" Certificates    ") #3
+  opts+=(" EXIT            ") #4
 
   selectionMenu opts sel - $sel false true || exit_app $?
   echo
@@ -3001,9 +3113,12 @@ while /bin/true; do
       encrypt
       ;;
     2)
-      certificates
+      fileprocess
       ;;
     3)
+      certificates
+      ;;
+    4)
       exit_app 0
       ;;
   esac
