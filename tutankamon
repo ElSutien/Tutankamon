@@ -1699,6 +1699,15 @@ function BashFileExplorer() {
   local _key
   local retcode=2
   
+  #Initialize flags
+  bfe_isFullReload=1
+  bfe_isPathChanged=1
+  bfe_isSelectChanged=1
+  bfe_isPageChanged=1
+  bfe_isWinUnderSize=0
+  bfe_isExit=0
+  
+  
   [ -n "${2}" ] && [ "${2}" != "-" ] && bfe_winTitle="${2}"  #Set window Title Bar
   
   if bfeIsSecondaryScreen; then
@@ -2882,6 +2891,7 @@ file_decrypt () {
 
 # FUNCTION Process files for encrypt/decrypt
 fileprocess () {
+  local opts
   local sel=0
   local fil
   
