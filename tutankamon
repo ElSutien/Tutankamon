@@ -1601,8 +1601,8 @@ bashed_main() {
 
 
 bfe_NAME="BashFileExplorer"
-bfe_VERSION="1.1"
-bfe_RELEASE_DATE="02/10/2025"
+bfe_VERSION="1.2"
+bfe_RELEASE_DATE="13/04/2026"
 bfe_AUTHOR="ElSutien"
 
 
@@ -1706,7 +1706,6 @@ function BashFileExplorer() {
   bfe_isPageChanged=1
   bfe_isWinUnderSize=0
   bfe_isExit=0
-  
   
   [ -n "${2}" ] && [ "${2}" != "-" ] && bfe_winTitle="${2}"  #Set window Title Bar
   
@@ -1968,6 +1967,27 @@ function bfeExitDialog(){
 }
 
 
+# FUNCTION Perform a directory autocompletion for READLINE library
+# For use as keybind
+function bfeDirComplete(){
+  local wd="${READLINE_LINE%/*}"
+  local ds="${READLINE_LINE##*/}"
+  local dirs="$(find $wd -maxdepth 1 -type d -name "$ds*" -printf "%f\n" 2>/dev/null)"
+  local dirn="$(echo $dirs | wc -w)"
+  
+  if [ $dirn -eq 0 ]; then  #If no predicted entries: return
+    return 0
+  elif [ $dirn -eq 1 ]; then  #If only one predicted entrie: select it
+    if [ "$ds" == "$dirs" ]; then
+      READLINE_LINE="${wd}/${dirs}/"
+    else
+      READLINE_LINE="${wd}/${dirs}"
+    fi
+    READLINE_POINT="${#READLINE_LINE}"
+    return 0
+  fi
+}
+
 
 function bfeGoToDialog(){
   local path
@@ -1977,7 +1997,7 @@ function bfeGoToDialog(){
   
   tput cup $ph $pw
   echo -en "${bfe_BlackText}$(bfeBlank $lw)"
-  tput cup $ph $pw
+  tput cup $ph 0
   echo -en "${bfe_BlackText}"
   
   tput cnorm  #Set cursor visble
@@ -1994,7 +2014,13 @@ function bfeGoToDialog(){
   bind -r '\e@'
   bind -r '\e/'
   bind -r '\e!'
-  read -e -p "GoTo: " -i "$PWD" path
+  
+  bind '"\C-w": kill-whole-line'  #Set keybind for cancel input
+  bind '"\e": "\C-w\C-d"'
+  bind -x '"\t":"bfeDirComplete"'  #Set keybind to Tab for autocompletion
+  read -e -p "| GoTo: " -i "$PWD" path
+  
+  bind -r '\t'
   bind '"\C-i": complete'
   set +o emacs
   
@@ -2053,7 +2079,7 @@ function bfeDrawUI() {  # Draw UI
 	# Print current path and directory
   if [ $bfe_isPathChanged -eq 1 ] || [ $bfe_isFullReload -eq 1 ]; then
 	  tput cup $pPath
-    local tmp="Current path: `pwd`"
+    local tmp="Path: `pwd`"
 	  echo -e "${bfe_BlackText}${tmp}${bfe_Background}$(bfeBlank $(($bfe_winw - ${#tmp} - 3)) )${bfe_ClearColor}"
     
     bfeDrawInfobar
@@ -2862,12 +2888,12 @@ file_decrypt () {
   local aux
   
   #Check if file is encrypted
-  head -n1 "$1" | grep -q -- '-----BEGIN PGP MESSAGE-----'
-  if [ $? -ne 0 ]; then
-    echo "Selected file is not a PGP file"
-    pause
-    return 1
-  fi
+  #head -n1 "$1" | grep -q -- '-----BEGIN PGP MESSAGE-----'
+  #if [ $? -ne 0 ]; then
+  #  echo "Selected file is not a PGP file"
+  #  pause
+  #  return 1
+  #fi
   
   #Select output name
   echo "$1" | grep -qE '.*\.asc' && fname="${1%.asc}" || fname="$1.out"
