@@ -1822,6 +1822,15 @@ bfeIsSecondaryScreen() {
 }
 
 
+# FUNCTION fetch the current cursor position on screen
+# Echo: two integers of row (line) and column starting from 0
+bfeGetCursorPos() {
+  local pos
+  IFS='[;' read -rs -p $'\e[6n' -d R -a pos || echo "ERROR fetching cursor pos. Code: $? ; ${pos[*]}"
+  echo "$((pos[1]-1)) $((pos[2]-1))"
+}
+
+
 # FUNCTION await for user to press arrow keys, Spacebar, Enter or Esc
 # Param 1: timeout of the command (optional)
 # Echo: a string with the name of the key pressed or empty if no valid
@@ -1969,10 +1978,10 @@ function bfeExitDialog(){
 
 # FUNCTION Perform a directory autocompletion for READLINE library
 # For use as keybind
-function bfeDirComplete(){
+function bfeDirCompletion(){
   local wd="${READLINE_LINE%/*}"
   local ds="${READLINE_LINE##*/}"
-  local dirs="$(find $wd -maxdepth 1 -type d -name "$ds*" -printf "%f\n" 2>/dev/null)"
+  local dirs="$(find $wd -maxdepth 1 -mindepth 1 -type d -name "$ds*" -printf "%f\n" 2>/dev/null)"
   local dirn="$(echo $dirs | wc -w)"
   
   if [ $dirn -eq 0 ]; then  #If no predicted entries: return
@@ -1985,10 +1994,31 @@ function bfeDirComplete(){
     fi
     READLINE_POINT="${#READLINE_LINE}"
     return 0
+  else  #If there are more than one posibility
+    local dirsA
+    local prefix
+    local s
+    mapfile -t dirsA <<< "$dirs"
+    
+    prefix=${dirsA[0]}  #Get first element as prefix
+    for s in "${dirsA[@]:1}"; do  #Iterate over every element
+      while [ ${s#"$prefix"} == "$s" ]; do  # While the prefix is not part of this element
+        prefix=${prefix%?}  # Trim last char of the prefix (as full is not working)
+        [ -z "$prefix" ] && break  #If no more prefix is available, exit loops
+      done
+    done
+    
+    if [ -n "$prefix" ]; then #If prefix found, complete line
+      READLINE_LINE="${wd}/${prefix}"
+      READLINE_POINT="${#READLINE_LINE}"
+    fi
   fi
+  
+  bfeDrawList "$dirs"
 }
 
 
+# FUNCTION Invoke GOTO dialog and logic
 function bfeGoToDialog(){
   local path
   declare -i ph=2
@@ -2015,9 +2045,9 @@ function bfeGoToDialog(){
   bind -r '\e/'
   bind -r '\e!'
   
-  bind '"\C-w": kill-whole-line'  #Set keybind for cancel input
+  bind '"\C-w": kill-whole-line'  # Set keybind for cancel input
   bind '"\e": "\C-w\C-d"'
-  bind -x '"\t":"bfeDirComplete"'  #Set keybind to Tab for autocompletion
+  bind -x '"\t":"bfeDirCompletion"'  # Set keybind to Tab for autocompletion
   read -e -p "| GoTo: " -i "$PWD" path
   
   bind -r '\t'
@@ -2047,7 +2077,7 @@ function bfeDrawWindow() {
 	tput cup 0 0
   echo -en "${bfe_TitleColor}$(bfeBlank ${bfe_winw})${bfe_ClearColor}"
   tput cup 0 $pTitle
-	echo -en "${bfe_TitleColor}${bfe_winTitle}"   # Background-color blue , gray
+	echo -en "${bfe_TitleColor}${bfe_winTitle}"  # Background-color blue , gray
   
   #Print window background
   tput cup 4 0
@@ -2070,6 +2100,8 @@ function bfeDrawWindow() {
 }
 
 
+# FUNCTION Draw full UI
+# SCOPE Full usable screen w/o skeleton
 function bfeDrawUI() {  # Draw UI
   local pPath="2 2"                    #Path bar data position
   local pInfo="$(($bfe_winh - 2)) 2"   #Info bar data position
@@ -2109,7 +2141,9 @@ function bfeDrawUI() {  # Draw UI
 }
 
 
-function bfeDrawInfobar() {  # print Number of Fils, Directories and size of current Directory size
+# FUNCTION Draw info bar for current directory
+# SCOPE Only in info bar draws the number of files, num of directories and size of current dir.
+function bfeDrawInfobar() {
   declare -i cuph=$bfe_winh-2
   local NumberOfDir=$(ls -Al ${PWD} | tail -n+2 | grep "^d" | wc -l)
   local NumberOfFiles=$(ls -Al ${PWD} | tail -n+2 | grep -v "^d" | wc -l)
@@ -2129,6 +2163,7 @@ function bfeDrawInfobar() {  # print Number of Fils, Directories and size of cur
 }
 
 
+# FUNCTION Print a message on status bar
 # Param 1 : str of the message
 function bfePrintMessage() {
   declare -i cuph=$bfe_winh-2
@@ -2140,6 +2175,7 @@ function bfePrintMessage() {
 }
 
 
+# FUNCTION Print given file info on the right window
 # Param 1 : str file path (optional)
 function bfePrintFileInfo() {
   declare -i cupH=4
@@ -2169,7 +2205,7 @@ function bfeDrawDirectory() {  # print Driectory files
 	unset bfe_FileNameList; unset bfe_FilePermList; unset bfe_FileSizeList
   
   declare -i cupStartH=4  # hPos
-  bfe_maxFilesPerPage=$bfe_winh-7
+  #bfe_maxFilesPerPage=$bfe_winh-7
   
   #Clear previous tree
   for i in $(seq $cupStartH $((cupStartH+bfe_maxFilesPerPage-1))); do
@@ -2210,7 +2246,7 @@ function bfeDrawDirectory() {  # print Driectory files
   # size is 4 char long (6 with spaces)
   # name si as long as possible
   
-  
+  local i
   for i in $(seq $startIndex $endIndex); do
     tput cup $cupStartH 1
     if [ -d "${PWD}/${bfe_FileNameList[i]}" ]; then  #Select color from type
@@ -2244,6 +2280,32 @@ function bfeDrawDirectory() {  # print Driectory files
   tput cup $cupPageH $cupPageW
   echo -en "${bfe_BlackText}$((bfe_page+1))/$bfe_pagesNum${bfe_ClearColor}"
   
+  return
+}
+
+
+# FUNCTION Draw a list 
+function bfeDrawList() {
+  declare -i i
+  declare -i cupStartH=4  # hPos
+  #bfe_maxFilesPerPage=$bfe_winh-7
+  declare -i namemax=$bfe_winsep-19
+  local oldCUP=$(bfeGetCursorPos)  #Save actual cursor position
+  
+  local listA
+  mapfile -t listA <<< "$1"
+  
+  #Clear previous tree
+  for i in $(seq $cupStartH $((cupStartH+bfe_maxFilesPerPage-1))); do
+    tput cup $i 1
+    echo -en "${bfe_Background}$(bfeBlank $(($bfe_winsep -1)))${bfe_ClearColor}"
+    if [ -n "${listA[$i-4]}" ]; then
+      tput cup $i 1
+      echo -n "$(echo "${listA[$i-4]}" | cut -c-$namemax)"
+    fi
+  done
+  
+  tput cup $oldCUP  #Restore old cursor position
   return
 }
 
