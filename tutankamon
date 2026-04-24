@@ -2945,7 +2945,7 @@ choose_recipients() {
 
 
 # FUNCTION Performs whole decrypt process
-decrypt () {
+text_decrypt () {
   local rawtext
   local realtext
   
@@ -2976,7 +2976,7 @@ decrypt () {
 
 
 # FUNCTION Performs whole encrypt process
-encrypt() {
+text_encrypt() {
   echo "Select the recipients of the message:"
   choose_recipients recipientsA #Select recipients
   
@@ -3182,6 +3182,47 @@ manage_certificates () {
 }
 
 
+# FUNCTION Import new certificate
+import_certificate () {
+  local opts
+  local sel
+  local cert
+  
+  opts=()
+  opts+=("Text") #0
+  opts+=("File") #1
+  opts+=("BACK")      #2
+  
+  normalizeArray opts
+  selectionMenu opts sel "Import from..." 0 false true false true || sel=2
+  
+  case $sel in
+    0)
+      bashed_main -v -m "Enter certificate. Use Ctrl+D to exit." cert
+      if [ -z "$cert" ]; then
+        echo "Input empty. Aborting."
+        return 0
+      fi
+      cat "$cert" | gpg --armor --import
+      ;;
+    1)
+      BashFileExplorer cert "Select file to import"
+      clear
+      if [ -z "$cert" ]; then
+        echo "Aborting..."
+      elif [ -f "$res" ]; then
+        cat "$cert" | gpg --armor --import
+      else
+        echo "File do not exist."
+      fi
+      ;;
+    2)
+      return 0
+      ;;
+  esac
+}
+
+
 # FUNCTION Certificates operation
 certificates () {
   local sel=0
@@ -3213,17 +3254,7 @@ certificates () {
         gpg --armor --export $(gpg --list-secret-keys | grep -B1 "^uid" | head -n1 | sed 's/[ ][ ]*//g')
         ;;
       2)
-        local res
-        #askValue "Path of the certificate" res
-        BashFileExplorer res "Select file to import"
-        clear
-        if [ -z "$res" ]; then
-          echo "Aborting..."
-        elif [ -f "$res" ]; then
-          cat "$res" | gpg --armor --import
-        else
-          echo "File do not exist."
-        fi
+        import_certificate
         ;;
       3)
         return 0
@@ -3316,10 +3347,10 @@ while /bin/true; do
 
   case $sel in
     0)
-      decrypt
+      text_decrypt
       ;;
     1)
-      encrypt
+      text_encrypt
       ;;
     2)
       fileprocess
