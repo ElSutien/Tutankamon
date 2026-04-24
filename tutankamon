@@ -2032,7 +2032,7 @@ function bfeDirCompletion(){
     
     prefix=${dirsA[0]}  #Get first element as prefix
     for s in "${dirsA[@]:1}"; do  #Iterate over every element
-      while [ ${s#"$prefix"} == "$s" ]; do  # While the prefix is not part of this element
+      while [ "${s#"$prefix"}" == "$s" ]; do  # While the prefix is not part of this element
         prefix=${prefix%?}  # Trim last char of the prefix (as full is not working)
         [ -z "$prefix" ] && break  #If no more prefix is available, exit loops
       done
