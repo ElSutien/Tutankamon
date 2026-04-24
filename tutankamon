@@ -2551,14 +2551,16 @@ askValue() {
 # Parameters:
 #       - 1: name of the variable Array of options available
 #       - 2: name of the variable to store the result
-#       - 3: string of the message to display for selection  [none with -]
-#       - 4: integer of the default selected option (index from 0) [default 0]
-#       - 5: boolean if this is a multi selection menu [default false]
-#       - 6: boolean if selection can be aborted [default false]
-#       - 7: boolean if ask user to confirm abortion [default true]
+#       - 3: string of the message to display for selection [none with -]
+#       - 4: integer of the default selected option (index from 0) [0]
+#       - 5: boolean if this is a multi selection menu [false]
+#       - 6: boolean if selection can be aborted [false]
+#       - 7: boolean if ask user to confirm abortion [true]
+#       - 8: boolean if can use backspace to abort (go back) [false]
 # Returns: 0 if successfull; 123 for abort.
 # Returns byRef: an integer index of the array for the selected option.
 #                In case of multisel, a vector or integers.
+# Date: 24/04/2026
 selectionMenu () {
   local _locA
   local _len
@@ -2568,11 +2570,13 @@ selectionMenu () {
   local _multiSel
   local _isExitable
   local _isAskOnExt
+  local _isBackable
   local _min _max _sel
   local _er _ec
   local _cr _cc
   local _key
   local i
+  local _flag=0  #Loop flag; 0: continue; 1: selected; 2: abort
   
   copyArray $1 _locA
   _len=${#_locA[@]}
@@ -2585,6 +2589,7 @@ selectionMenu () {
   
   [ -n "${6}" ] && [ "${6}" == "true" ] && _isExitable=1 || _isExitable=0  #Set default for Exitable
   [ -n "${7}" ] && [ "${7}" == "false" ] && _isAskOnExt=0 || _isAskOnExt=1 #Set default for Ask On Exit
+  [ -n "${8}" ] && [ "${8}" == "true" ] && _isBackable=1 || _isBackable=0 #Set default for enable backspace
   
   if [ -z "$3" ] || [ "$3" == "-" ]; then #Print message if available
     :
@@ -2615,8 +2620,8 @@ selectionMenu () {
   #Move cursor pointer to first column
   _cc=0
   
-  local _flag=1
-  while [ $_flag -eq 1 ]; do
+  
+  while [ $_flag -eq 0 ]; do
     #Move cursor to selected line
     _cr=$((_er-_len+_sel))
     tput cup $_cr $_cc
@@ -2653,45 +2658,51 @@ selectionMenu () {
         _sel=$_max
         ;;
       Enter)
-        _flag=0
+        _flag=1
         ;;
       Space)
         if [ $_isMulti -eq 1 ]; then
           [ "${_multiSel[$_sel]}" == "*" ] && _multiSel[$_sel]=" " || _multiSel[$_sel]="*"
         fi
         ;;
-      Escape)
-        if [ $_isExitable -eq 1 ]; then
-          if [ $_isAskOnExt -eq 1 ]; then
-            tput cup $_er $_ec  #Move cursor to end
-            tput cnorm  #Set cursor to normal visibility
-            stty echo  #Print keystrokes
-            echo -en "${NC}"  #Disable any color
-            local _aux
-            askYesNo "Do you want to cancel?" _aux y
-            
-            if [ $_aux -eq 0 ]; then #If No
-              tput cup $_er $_ec  #Move cursor to end (prompt line)
-              echo -en "\r\033[0K"  #Erase Line (terminal commands)
-              #echo -en "\r                            "  #Erase Line (primitive)
-            else
-              echo
-              _er=$((_er+1))
-              _flag=2
-            fi
-            
-            tput civis  #Set cursor invisible
-            stty -echo  #Do not print keystrokes
-          else
-            echo
-            _er=$((_er+1))
-            _flag=2
-          fi
+      Backspace)
+        if [ $_isBackable -eq 1 ]; then
+          _flag=2
         fi
+        ;;
+      Escape)
+        _flag=2
         ;;
     esac
     
-    if [ $_flag -eq 0 ] && [ $_isMulti -eq 0 ] ; then
+    if [ $_flag -eq 2 ]; then
+      if [ $_isExitable -eq 1 ]; then
+        if [ $_isAskOnExt -eq 1 ]; then
+          tput cup $_er $_ec  #Move cursor to end
+          tput cnorm  #Set cursor to normal visibility
+          stty echo  #Print keystrokes
+          echo -en "${NC}"  #Disable any color
+          local _aux
+          askYesNo "Do you want to cancel?" _aux y
+          
+          if [ $_aux -eq 0 ]; then #If No
+            tput cup $_er $_ec  #Move cursor to end (prompt line)
+            echo -en "\r\033[0K"  #Erase Line (terminal commands)
+            #echo -en "\r                            "  #Erase Line (primitive)
+            _flag=0 #Abort exit loop
+          else
+            echo
+            _er=$((_er+1))
+          fi
+          
+          tput civis  #Set cursor invisible
+          stty -echo  #Do not print keystrokes
+        else
+          echo
+          _er=$((_er+1))
+        fi
+      fi
+    elif [ $_flag -eq 1 ] && [ $_isMulti -eq 0 ] ; then  #If option selected and no multi
       #Mark selected option
       tput cup $_cr $_cc
       echo -en "${NC}"  #Disable any color
@@ -2918,7 +2929,7 @@ choose_recipients() {
   done
   
   normalizeArray opts
-  selectionMenu opts sel "Use spacebar to select/unselect" 0 true true || return 1
+  selectionMenu opts sel "Use spacebar to select/unselect" 0 true true true true || return 1
   
   #Get email of selected options
   aux=()
@@ -3102,7 +3113,7 @@ fileprocess () {
   opts+=(" BACK") #2
   
   normalizeArray opts
-  selectionMenu opts sel - $sel false true false || sel=2
+  selectionMenu opts sel - $sel false true false true || sel=2
   
   case $sel in
     0)
@@ -3139,7 +3150,7 @@ manage_certificates () {
     done
     
     normalizeArray opts
-    selectionMenu opts sel1 "Certificate list:" $sel1 false true false || return 1  #Select certificate
+    selectionMenu opts sel1 "Certificate list:" $sel1 false true false true || return 1  #Select certificate
     
     
     echo "Selected: ${opts[$sel1]}"
@@ -3150,7 +3161,7 @@ manage_certificates () {
     opts+=(" Delete certificate") #2
     
     normalizeArray opts
-    selectionMenu opts sel2 - 0 false true false || continue  #Certificate opperation
+    selectionMenu opts sel2 - 0 false true false true || continue  #Certificate opperation
     
     case $sel2 in
       0)
@@ -3189,7 +3200,7 @@ certificates () {
     opts+=(" Import new certificate  ") #2
     opts+=(" BACK                    ") #3
     
-    selectionMenu opts sel - $sel false true false || sel=3
+    selectionMenu opts sel - $sel false true false true || sel=3
     echo
     
     case $sel in
