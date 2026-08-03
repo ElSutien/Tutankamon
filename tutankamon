@@ -1,8 +1,8 @@
 #!/bin/bash
 
 NAME="Tutankamon"
-VERSION="0.10"
-RELEASE_DATE="24/04/2026"
+VERSION="0.11"
+RELEASE_DATE="03/08/2026"
 
 
 #####################################################################################################################
@@ -2977,6 +2977,13 @@ text_decrypt () {
 
 # FUNCTION Performs whole encrypt process
 text_encrypt() {
+  local recipientsA
+  local rawtext
+  local recraw
+  local aux
+  local opts
+  local sel
+  
   echo "Select the recipients of the message:"
   choose_recipients recipientsA #Select recipients
   
@@ -2995,23 +3002,52 @@ text_encrypt() {
     return 1
   fi
   
-  recraw=""
-  echo "Do you want to encrypt the message for:"
-  for x in "${recipientsA[@]}"; do
-    echo " - $x"
-    recraw="${recraw:+$recraw }-r $x"
-  done
-  askYesNo "Continue?" aux y
   
-  if [ $aux -eq 1 ]; then
-    tput rmcup
-    echo "$rawtext" | gpg --encrypt --sign --armor --trust-model always $recraw
+  
+  #Confirm or edit menu
+  aux=0
+  while [ $aux -eq 0 ]; do
+    recraw=""
+    echo "Encrypt the message for:"
+    for x in "${recipientsA[@]}"; do
+      echo " - $x"
+      recraw="${recraw:+$recraw }-r $x"
+    done
     echo
-    pause
-    tput smcup
-  else
-    echo "Aborting."
-  fi
+  
+    opts=()
+    opts+=(" Modify Recipients") #0
+    opts+=(" Modify Message") #1
+    opts+=(" ENCRYPT") #2
+    
+    normalizeArray opts
+    selectionMenu opts sel "Message options" 2 false true true false || return 1
+    
+    case $sel in
+      0)
+        choose_recipients recipientsA
+        if [ ${#recipientsA[@]} -eq 0 ]; then
+          echo "No recipients was selected."
+        fi
+        ;;
+      1)
+        bashed_main -v -m "Enter text to encrypt. Use Ctrl+D to exit." rawtext
+        if [ -z "$rawtext" ]; then
+          echo "Input empty."
+        fi
+        ;;
+      2)
+        aux=1
+        ;;
+    esac
+  done
+  
+  
+  tput rmcup
+  echo "$rawtext" | gpg --encrypt --sign --armor --trust-model always $recraw
+  echo
+  pause
+  tput smcup
   
   unset rawtext
   echo
