@@ -14,10 +14,13 @@ It is like Kleopatra on Windows but a lot simpler, easier to use and portable.
 - **Encrypt a message**
   - Uses the integrated text editor to input the message.
   - Can select one or multiple recipients from stored public keys.
+- **Manage files**
+  - Use integrated file browser to select files.
+  - Encrypt or decrypt files directly.
 - **Manage certificates**
   - Manage your stored public keys subjects.
   - Print the public key of your private key.
-  - Import new certificates.
+  - Import new certificates from text or file.
 
 ## Requirements
 
